@@ -147,7 +147,7 @@ class MiniSom(object):
         
         distance_metric: string, optional (default='euclidean')
             Distance metric to use.
-            possible values: 'euclidean', 'correlation'
+            possible values: 'euclidean', 'pearson'
         """
         if sigma >= x or sigma >= y:
             warn('Warning: sigma is too high for the dimension of the map.')
@@ -186,7 +186,28 @@ class MiniSom(object):
         
         self.distance_metric = distance_metric
         
-
+    """ Distance Metrics --------------------------- """
+    
+    def _pearson_distance(self, x, y):
+        """Returns the Pearson distance between two variables"""
+        return 1 - pearsonr(x, y)
+    
+    def _get_activation_map(self, x, distance_metric):
+        """Returns the activation map for a specific distance_metric.
+        
+        Parameters
+        ----------
+        x: the vector for which calculate the activation (numpy array 1 x #input_len)
+        distance_metric: the function for calculate the distance between two points
+        """
+        activation_map = zeros((self._weights.shape[0], self._weights.shape[1]))
+        for i in range(len(self._weights.shape[0])):
+            for j in range(len(self._weights.shape[1])):
+                activation_map[i][j] = distance_metric(x, self._weights[i][j])
+        return activation_map
+    
+    """ -------------------------------------------- """
+    
     def get_weights(self):
         """Returns the weights of the neural network."""
         return self._weights
@@ -194,8 +215,11 @@ class MiniSom(object):
     def _activate(self, x):
         """Updates matrix activation_map, in this matrix
            the element i,j is the response of the neuron i,j to x."""
-        s = subtract(x, self._weights)  # x - w
-        self._activation_map = linalg.norm(s, axis=-1)
+        if self.distance_metric == 'euclidean':
+            s = subtract(x, self._weights)  # x - w
+            self._activation_map = linalg.norm(s, axis=-1)
+        if self.distance_metric == 'pearson':
+            self._activation_map = self._get_activation_map(x, self._pearson_distance)
 
     def activate(self, x):
         """Returns the activation map to x."""
@@ -421,7 +445,7 @@ class MiniSom(object):
             weights_flat_sq = power(weights_flat, 2).sum(axis=1, keepdims=True)
             cross_term = dot(input_data, weights_flat.T)
             return sqrt(-2 * cross_term + input_data_sq + weights_flat_sq.T)
-        if self.distance_metric == 'correlation':
+        if self.distance_metric == 'pearson':
             corr_mat = zeros((input_data.shape[0], weights_flat.shape[0]))
             for i in range(input_data.shape[0]):
                 for j in range(weights_flat.shape[0]):
