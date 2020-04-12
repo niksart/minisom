@@ -2,9 +2,8 @@ from math import sqrt
 
 from numpy import (array, unravel_index, nditer, linalg, random, subtract,
                    power, exp, pi, zeros, arange, outer, meshgrid, dot,
-                   logical_and, mean, std, cov, argsort, linspace, transpose,
-                   einsum, prod, nan, sqrt, hstack, diff, argmin)
-from numpy import sum as npsum
+                   logical_and, cov, argsort, linspace, transpose,
+                   einsum, prod, nan, hstack, diff, argmin)
 from numpy.linalg import norm
 from collections import defaultdict, Counter
 from warnings import warn
@@ -13,6 +12,9 @@ from time import time
 from datetime import timedelta
 import pickle
 import os
+
+# for distance metrics
+from scipy.stats import pearsonr
 
 # for unit tests
 from numpy.testing import assert_almost_equal, assert_array_almost_equal
@@ -87,7 +89,9 @@ def asymptotic_decay(learning_rate, t, max_iter):
 class MiniSom(object):
     def __init__(self, x, y, input_len, sigma=1.0, learning_rate=0.5,
                  decay_function=asymptotic_decay,
-                 neighborhood_function='gaussian', random_seed=None):
+                 neighborhood_function='gaussian',
+                 random_seed=None,
+                 distance_metric='euclidean'):
         """Initializes a Self Organizing Maps.
 
         A rule of thumb to set the size of the grid for a dimensionality
@@ -140,6 +144,10 @@ class MiniSom(object):
 
         random_seed : int, optional (default=None)
             Random seed to use.
+        
+        distance_metric: string, optional (default='euclidean')
+            Distance metric to use.
+            possible values: 'euclidean', 'correlation'
         """
         if sigma >= x or sigma >= y:
             warn('Warning: sigma is too high for the dimension of the map.')
@@ -175,6 +183,9 @@ class MiniSom(object):
                  'are used as neighborhood function')
 
         self.neighborhood = neig_functions[neighborhood_function]
+        
+        self.distance_metric = distance_metric
+        
 
     def get_weights(self):
         """Returns the weights of the neural network."""
@@ -400,15 +411,23 @@ class MiniSom(object):
         return a
 
     def _distance_from_weights(self, data):
-        """Returns a matrix d where d[i,j] is the euclidean distance between
+        """Returns a matrix d where d[i,j] is the distance between
         data[i] and the j-th weight.
         """
         input_data = array(data)
         weights_flat = self._weights.reshape(-1, self._weights.shape[2])
-        input_data_sq = power(input_data, 2).sum(axis=1, keepdims=True)
-        weights_flat_sq = power(weights_flat, 2).sum(axis=1, keepdims=True)
-        cross_term = dot(input_data, weights_flat.T)
-        return sqrt(-2 * cross_term + input_data_sq + weights_flat_sq.T)
+        if self.distance_metric == 'euclidean':
+            input_data_sq = power(input_data, 2).sum(axis=1, keepdims=True)
+            weights_flat_sq = power(weights_flat, 2).sum(axis=1, keepdims=True)
+            cross_term = dot(input_data, weights_flat.T)
+            return sqrt(-2 * cross_term + input_data_sq + weights_flat_sq.T)
+        if self.distance_metric == 'correlation':
+            corr_mat = zeros((input_data.shape[0], weights_flat.shape[0]))
+            for i in range(input_data.shape[0]):
+                for j in range(weights_flat.shape[0]):
+                    corr_mat[i][j] = 1 - pearsonr(input_data[i], weights_flat[j])[0]  # use Pearson distance
+            print(corr_mat.shape)
+            return corr_mat
 
     def quantization_error(self, data):
         """Returns the quantization error computed as the average
